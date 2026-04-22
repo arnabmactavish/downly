@@ -1,0 +1,6 @@
+- [x] 1. Create `MainTabView.swift` containing a native `TabView` with Downloads and Settings tabs.
+- [x] 2. Style the `TabView` with iOS Liquid Glass (`.toolbarBackground` with `.ultraThinMaterial`).
+- [x] 3. In `DownloadListView.swift`, remove `FloatingBottomNavBar`, `SettingsCircularButton`, and the bottom `.overlay`.
+- [x] 4. Remove the `@State private var showSettings` and its associated `.sheet` from `DownloadListView.swift`.
+- [x] 5. Relocate the `DownloadFilter` selection from the old `FloatingBottomNavBar` into a top `Picker` (segmented style) in `DownloadListView`.
+- [x] 6. Update the main app entry (`DownlyApp.swift`) to point to `MainTabView` instead of `DownloadListView`.

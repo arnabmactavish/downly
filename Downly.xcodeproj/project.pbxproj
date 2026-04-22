@@ -6,19 +6,93 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0608C1822F8D7E950099FED2 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0608C1812F8D7E950099FED2 /* WidgetKit.framework */; };
+		0608C1842F8D7E950099FED2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0608C1832F8D7E950099FED2 /* SwiftUI.framework */; };
+		0608C1952F8D7E960099FED2 /* DownlyWidgetExtensionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0608C17F2F8D7E950099FED2 /* DownlyWidgetExtensionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		065E13072F8E93BA006F71D0 /* DownlyIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 065E13062F8E93BA006F71D0 /* DownlyIcon.icon */; };
+		065E13082F8E93BA006F71D0 /* DownlyIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 065E13062F8E93BA006F71D0 /* DownlyIcon.icon */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0608C1932F8D7E960099FED2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 069167F62F8D6C1E003D0AFB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0608C17E2F8D7E950099FED2;
+			remoteInfo = DownlyWidgetExtensionExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0608C19A2F8D7E960099FED2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0608C1952F8D7E960099FED2 /* DownlyWidgetExtensionExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		0608C17F2F8D7E950099FED2 /* DownlyWidgetExtensionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DownlyWidgetExtensionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0608C1812F8D7E950099FED2 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		0608C1832F8D7E950099FED2 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		065E13062F8E93BA006F71D0 /* DownlyIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = DownlyIcon.icon; sourceTree = "<group>"; };
 		069167FE2F8D6C1E003D0AFB /* Downly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Downly.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		069919A72F8E206700A0A8B1 /* DownlyWidgetExtensionExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DownlyWidgetExtensionExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0608C17A2F8D7A830099FED2 /* Exceptions for "Downly" folder in "Downly" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 069167FD2F8D6C1E003D0AFB /* Downly */;
+		};
+		0608C1992F8D7E960099FED2 /* Exceptions for "DownlyWidgetExtension" folder in "DownlyWidgetExtensionExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 0608C17E2F8D7E950099FED2 /* DownlyWidgetExtensionExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		0608C1852F8D7E950099FED2 /* DownlyWidgetExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0608C1992F8D7E960099FED2 /* Exceptions for "DownlyWidgetExtension" folder in "DownlyWidgetExtensionExtension" target */,
+			);
+			path = DownlyWidgetExtension;
+			sourceTree = "<group>";
+		};
 		069168002F8D6C1E003D0AFB /* Downly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0608C17A2F8D7A830099FED2 /* Exceptions for "Downly" folder in "Downly" target */,
+			);
 			path = Downly;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0608C17C2F8D7E950099FED2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0608C1842F8D7E950099FED2 /* SwiftUI.framework in Frameworks */,
+				0608C1822F8D7E950099FED2 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		069167FB2F8D6C1E003D0AFB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -29,10 +103,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0608C1802F8D7E950099FED2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				065E13062F8E93BA006F71D0 /* DownlyIcon.icon */,
+				0608C1812F8D7E950099FED2 /* WidgetKit.framework */,
+				0608C1832F8D7E950099FED2 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		069167F52F8D6C1E003D0AFB = {
 			isa = PBXGroup;
 			children = (
+				069919A72F8E206700A0A8B1 /* DownlyWidgetExtensionExtension.entitlements */,
 				069168002F8D6C1E003D0AFB /* Downly */,
+				0608C1852F8D7E950099FED2 /* DownlyWidgetExtension */,
+				0608C1802F8D7E950099FED2 /* Frameworks */,
 				069167FF2F8D6C1E003D0AFB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +128,7 @@
 			isa = PBXGroup;
 			children = (
 				069167FE2F8D6C1E003D0AFB /* Downly.app */,
+				0608C17F2F8D7E950099FED2 /* DownlyWidgetExtensionExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +136,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0608C17E2F8D7E950099FED2 /* DownlyWidgetExtensionExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0608C1962F8D7E960099FED2 /* Build configuration list for PBXNativeTarget "DownlyWidgetExtensionExtension" */;
+			buildPhases = (
+				0608C17B2F8D7E950099FED2 /* Sources */,
+				0608C17C2F8D7E950099FED2 /* Frameworks */,
+				0608C17D2F8D7E950099FED2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0608C1852F8D7E950099FED2 /* DownlyWidgetExtension */,
+			);
+			name = DownlyWidgetExtensionExtension;
+			packageProductDependencies = (
+			);
+			productName = DownlyWidgetExtensionExtension;
+			productReference = 0608C17F2F8D7E950099FED2 /* DownlyWidgetExtensionExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		069167FD2F8D6C1E003D0AFB /* Downly */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0691680B2F8D6C1F003D0AFB /* Build configuration list for PBXNativeTarget "Downly" */;
@@ -55,10 +165,12 @@
 				069167FA2F8D6C1E003D0AFB /* Sources */,
 				069167FB2F8D6C1E003D0AFB /* Frameworks */,
 				069167FC2F8D6C1E003D0AFB /* Resources */,
+				0608C19A2F8D7E960099FED2 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0608C1942F8D7E960099FED2 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				069168002F8D6C1E003D0AFB /* Downly */,
@@ -80,6 +192,9 @@
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
+					0608C17E2F8D7E950099FED2 = {
+						CreatedOnToolsVersion = 26.4;
+					};
 					069167FD2F8D6C1E003D0AFB = {
 						CreatedOnToolsVersion = 26.4;
 					};
@@ -100,21 +215,38 @@
 			projectRoot = "";
 			targets = (
 				069167FD2F8D6C1E003D0AFB /* Downly */,
+				0608C17E2F8D7E950099FED2 /* DownlyWidgetExtensionExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0608C17D2F8D7E950099FED2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				065E13072F8E93BA006F71D0 /* DownlyIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		069167FC2F8D6C1E003D0AFB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				065E13082F8E93BA006F71D0 /* DownlyIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0608C17B2F8D7E950099FED2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		069167FA2F8D6C1E003D0AFB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +256,77 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		0608C1942F8D7E960099FED2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0608C17E2F8D7E950099FED2 /* DownlyWidgetExtensionExtension */;
+			targetProxy = 0608C1932F8D7E960099FED2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0608C1972F8D7E960099FED2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = DownlyWidgetExtensionExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GUKA437UR3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DownlyWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DownlyWidgetExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.axoman.downly.DownlyWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0608C1982F8D7E960099FED2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = DownlyWidgetExtensionExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GUKA437UR3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DownlyWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DownlyWidgetExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.axoman.downly.DownlyWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		069168092F8D6C1F003D0AFB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -247,12 +449,18 @@
 		0691680C2F8D6C1F003D0AFB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = DownlyIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Downly/Downly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GUKA437UR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Downly/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Downly;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -263,7 +471,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.axomxz.Downly;
+				PRODUCT_BUNDLE_IDENTIFIER = com.axoman.downly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -278,12 +486,18 @@
 		0691680D2F8D6C1F003D0AFB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = DownlyIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Downly/Downly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GUKA437UR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Downly/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Downly;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -294,7 +508,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.axomxz.Downly;
+				PRODUCT_BUNDLE_IDENTIFIER = com.axoman.downly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -309,6 +523,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0608C1962F8D7E960099FED2 /* Build configuration list for PBXNativeTarget "DownlyWidgetExtensionExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0608C1972F8D7E960099FED2 /* Debug */,
+				0608C1982F8D7E960099FED2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		069167F92F8D6C1E003D0AFB /* Build configuration list for PBXProject "Downly" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
