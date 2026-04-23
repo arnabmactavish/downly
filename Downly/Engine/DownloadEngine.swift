@@ -81,11 +81,15 @@ actor DownloadEngine: NSObject {
 
     override init() {
         super.init()
-        // Use a default (foreground) session so that delegate callbacks
-        // (didWriteData, didFinishDownloading) are delivered reliably while
-        // the app is in the foreground. Background sessions require an explicit
-        // entitlement and silently fail in the Simulator.
-        let config = URLSessionConfiguration.default
+        // Use a background session so downloads continue when the app is
+        // backgrounded or the screen locks. The system daemon (nsurlsessiond)
+        // takes over the transfer and wakes the app via delegate callbacks
+        // when events complete.
+        let config = URLSessionConfiguration.background(
+            withIdentifier: "com.axoman.downly.bgdownload"
+        )
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
         // Back-pressure: don't allow more than 6 simultaneous socket connections
         // across all downloads (system may further restrict this).
         config.httpMaximumConnectionsPerHost = 6

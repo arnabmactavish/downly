@@ -21,6 +21,8 @@ final class DownloadItem {
     var downloadedSize: Int64
     /// Current download speed in bytes per second (updated during active downloads).
     var speedBytesPerSecond: Int64
+    /// Estimated seconds remaining until download completion (nil when unknown).
+    var estimatedSecondsRemaining: Int?
 
     // MARK: - State
 
@@ -77,6 +79,7 @@ final class DownloadItem {
         totalSize: Int64 = 0,
         downloadedSize: Int64 = 0,
         speedBytesPerSecond: Int64 = 0,
+        estimatedSecondsRemaining: Int? = nil,
         status: DownloadStatus = .pending,
         resumeData: Data? = nil,
         errorMessage: String? = nil,
@@ -88,6 +91,7 @@ final class DownloadItem {
         self.totalSize = totalSize
         self.downloadedSize = downloadedSize
         self.speedBytesPerSecond = speedBytesPerSecond
+        self.estimatedSecondsRemaining = estimatedSecondsRemaining
         self.statusRaw = status.rawValue
         self.resumeData = resumeData
         self.errorMessage = errorMessage

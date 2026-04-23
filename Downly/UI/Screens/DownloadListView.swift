@@ -35,47 +35,72 @@ struct DownloadListView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                Picker("Filter", selection: $selectedFilter) {
-                    ForEach(DownloadFilter.allCases) { filter in
-                        Text(filter.label).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, DS.Spacing.md)
-                .padding(.vertical, DS.Spacing.xs)
-
-                LazyVStack(spacing: DS.Spacing.sm) {
-                    if filteredItems.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(filteredItems) { item in
-                            DownloadItemCard(
-                                item: item,
-                                onPause:  { Task { await queueManager.pauseDownload(id: item.id) } },
-                                onResume: { queueManager.resumeDownload(id: item.id) },
-                                onCancel: { queueManager.cancelDownload(id: item.id) },
-                                onRetry:  { queueManager.resumeDownload(id: item.id) }
-                            )
-                            .overlay(alignment: .topLeading) {
-                                if isEditMode {
-                                    selectionCheckbox(for: item)
-                                }
-                            }
-                            .id(item.id)
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    Picker("Filter", selection: $selectedFilter) {
+                        ForEach(DownloadFilter.allCases) { filter in
+                            Text(filter.label).tag(filter)
                         }
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, DS.Spacing.md)
+                    .padding(.vertical, DS.Spacing.xs)
+
+                    LazyVStack(spacing: DS.Spacing.sm) {
+                        if filteredItems.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(filteredItems) { item in
+                                HStack(spacing: DS.Spacing.sm) {
+                                    // Leading checkbox (edit mode only)
+                                    if isEditMode {
+                                        selectionCheckbox(for: item)
+                                            .transition(.move(edge: .leading).combined(with: .opacity))
+                                    }
+
+                                    DownloadItemCard(
+                                        item: item,
+                                        onPause:  { Task { await queueManager.pauseDownload(id: item.id) } },
+                                        onResume: { queueManager.resumeDownload(id: item.id) },
+                                        onCancel: { queueManager.cancelDownload(id: item.id) },
+                                        onRetry:  { queueManager.resumeDownload(id: item.id) }
+                                    )
+                                }
+                                .id(item.id)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, DS.Spacing.md)
+                    .padding(.vertical, DS.Spacing.md)
+                    // Extra bottom padding when edit mode is active to prevent
+                    // the FAB from overlapping the last card.
+                    .padding(.bottom, isEditMode ? 80 : 0)
                 }
-                .padding(.horizontal, DS.Spacing.md)
-                .padding(.vertical, DS.Spacing.md)
+                .scrollIndicators(.hidden)
+
+                // Floating delete FAB
+                if isEditMode && !selectedIDs.isEmpty {
+                    deleteFloatingButton
+                        .transition(.scale.combined(with: .opacity))
+                        .padding(DS.Spacing.lg)
+                }
             }
-            .scrollIndicators(.hidden)
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if isEditMode {
-                        editModeToolbar
+                        // Close (✕) button in edit mode
+                        Button {
+                            withSpringAnimation {
+                                isEditMode = false
+                                selectedIDs.removeAll()
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(DS.Colors.labelSec)
+                        }
                     } else {
                         Button {
                             withSpringAnimation { isEditMode = true }
@@ -104,6 +129,7 @@ struct DownloadListView: View {
                         .foregroundStyle(DS.Colors.label)
                 }
             }
+            .animation(.downlySpring, value: isEditMode)
         }
         .sheet(isPresented: $showAddSheet) {
             AddDownloadSheet { url, fileName in
@@ -112,42 +138,32 @@ struct DownloadListView: View {
         }
     }
 
-    // MARK: - Edit Mode Toolbar
+    // MARK: - Floating Delete FAB
 
-    @ViewBuilder
-    private var editModeToolbar: some View {
-        HStack(spacing: DS.Spacing.xs) {
-            Button {
-                withSpringAnimation {
-                    for id in selectedIDs {
-                        queueManager.cancelDownload(id: id)
-                    }
-                    selectedIDs.removeAll()
-                    isEditMode = false
+    private var deleteFloatingButton: some View {
+        Button {
+            withSpringAnimation {
+                for id in selectedIDs {
+                    queueManager.cancelDownload(id: id)
                 }
-            } label: {
-                HStack {
-                    Image(systemName: "trash")
-                    Text("Delete")
-                }
+                selectedIDs.removeAll()
+                // Keep edit mode active after deletion
             }
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(DS.Colors.label)
-
-            Button {
-                withSpringAnimation {
-                    isEditMode = false
-                    selectedIDs.removeAll()
-                }
-            } label: {
-                HStack {
-                    Image(systemName: "xmark")
-                    Text("Done")
-                }
-            }
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(DS.Colors.label)
+        } label: {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(DS.Colors.error)
+                .clipShape(Circle())
+                .shadow(
+                    color: DS.Shadow.fab.color,
+                    radius: DS.Shadow.fab.radius,
+                    x: DS.Shadow.fab.x,
+                    y: DS.Shadow.fab.y
+                )
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Selection Checkbox (edit mode)
@@ -165,11 +181,10 @@ struct DownloadListView: View {
             Image(systemName: selectedIDs.contains(item.id)
                     ? "checkmark.circle.fill"
                     : "circle")
-                .font(.system(size: 20))
+                .font(.system(size: 22))
                 .foregroundStyle(selectedIDs.contains(item.id)
                     ? DS.Colors.accent
                     : DS.Colors.labelSec)
-                .padding(DS.Spacing.xs)
         }
         .buttonStyle(.plain)
     }

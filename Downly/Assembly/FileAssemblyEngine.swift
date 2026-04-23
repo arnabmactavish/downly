@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Validates that the device has sufficient free space before
 /// starting a download or merge operation.
@@ -29,16 +30,17 @@ struct DiskSpaceChecker {
 
 /// Errors that the file assembly engine may throw.
 enum FileAssemblyError: Error, LocalizedError {
-    case chunkFileMissing(index: Int, path: String)
+    case chunkFileMissing(index: Int, path: String, totalChunks: Int)
     case sizeMismatch(expected: Int64, actual: Int64)
     case writeError(Error)
 
     var errorDescription: String? {
         switch self {
-        case .chunkFileMissing(let index, let path):
-            return "Chunk \(index) temp file not found at \(path)"
+        case .chunkFileMissing(let index, let path, let totalChunks):
+            return "Chunk \(index + 1)/\(totalChunks) temp file not found or empty at \(path). "
+                + "The file may have been evicted by the system during backgrounding."
         case .sizeMismatch(let expected, let actual):
-            return "File integrity check failed — expected \(expected) bytes, got \(actual)"
+            return "File integrity check failed — expected \(expected) bytes, got \(actual) bytes"
         case .writeError(let underlying):
             return "Write error: \(underlying.localizedDescription)"
         }
@@ -73,14 +75,26 @@ struct FileAssemblyEngine {
         // Sort chunks by index
         let sorted = chunks.sorted { $0.index < $1.index }
 
-        // Validate all chunk temp files exist before starting
+        // Validate all chunk temp files exist and are non-empty before starting
         for chunk in sorted {
             guard let path = chunk.tempFilePath,
                   FileManager.default.fileExists(atPath: path)
             else {
                 throw FileAssemblyError.chunkFileMissing(
                     index: chunk.index,
-                    path: chunk.tempFilePath ?? "<nil>"
+                    path: chunk.tempFilePath ?? "<nil>",
+                    totalChunks: sorted.count
+                )
+            }
+            // Guard against zero-byte chunks — iOS may evict file contents
+            // while preserving the directory entry.
+            let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+            let fileSize = (attrs?[.size] as? Int64) ?? 0
+            if fileSize == 0 {
+                throw FileAssemblyError.chunkFileMissing(
+                    index: chunk.index,
+                    path: path,
+                    totalChunks: sorted.count
                 )
             }
         }
@@ -101,7 +115,8 @@ struct FileAssemblyEngine {
             guard let chunkHandle = FileHandle(forReadingAtPath: chunkURL.path) else {
                 throw FileAssemblyError.chunkFileMissing(
                     index: chunk.index,
-                    path: chunkURL.path
+                    path: chunkURL.path,
+                    totalChunks: sorted.count
                 )
             }
             defer { try? chunkHandle.close() }
@@ -147,25 +162,39 @@ struct FileAssemblyEngine {
         }
     }
 
-    /// Scans `tempDir` for orphaned `.partN` files not in `activeIDs`
-    /// and deletes them. Called at app launch.
+    /// Scans temp directories for orphaned `.partN` files not belonging to
+    /// any active download and deletes them. Called at app launch.
+    ///
+    /// Scans both the system `tmp/` and the App Group container's `tmp/`
+    /// to cover files from both current and legacy storage paths.
     func cleanupOrphanedTempFiles(
-        in tempDir: URL = FileManager.default.temporaryDirectory,
         activeDownloadIDs: Set<String>
     ) {
         let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
-            at: tempDir,
-            includingPropertiesForKeys: nil
-        ) else { return }
+        var dirsToScan: [URL] = [fm.temporaryDirectory]
 
-        for fileURL in contents {
-            let name = fileURL.lastPathComponent
-            // Match pattern: <UUID>.partN
-            guard name.contains(".part") else { continue }
-            let prefix = String(name.split(separator: ".").first ?? Substring(name))
-            if !activeDownloadIDs.contains(prefix) {
-                try? fm.removeItem(at: fileURL)
+        // Also scan the App Group container's tmp/ directory
+        if let appGroupURL = fm.containerURL(
+            forSecurityApplicationGroupIdentifier: AppModelContainer.appGroupID
+        ) {
+            let groupTmp = appGroupURL.appendingPathComponent("tmp", isDirectory: true)
+            dirsToScan.append(groupTmp)
+        }
+
+        for dir in dirsToScan {
+            guard let contents = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: nil
+            ) else { continue }
+
+            for fileURL in contents {
+                let name = fileURL.lastPathComponent
+                // Match pattern: <UUID>.partN or <UUID>.tmp
+                guard name.contains(".part") || name.hasSuffix(".tmp") else { continue }
+                let prefix = String(name.split(separator: ".").first ?? Substring(name))
+                if !activeDownloadIDs.contains(prefix) {
+                    try? fm.removeItem(at: fileURL)
+                }
             }
         }
     }

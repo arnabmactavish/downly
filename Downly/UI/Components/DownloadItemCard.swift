@@ -27,6 +27,50 @@ struct DownloadProgressBar: View {
     }
 }
 
+// MARK: - Shimmer Progress Bar
+
+/// An indeterminate progress indicator with a horizontally-sweeping
+/// gradient animation, used during the initializing state.
+struct ShimmerProgressBar: View {
+
+    @State private var shimmerOffset: CGFloat = -1.0
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // Track
+                RoundedRectangle(cornerRadius: DS.Radius.pill, style: .continuous)
+                    .fill(DS.Colors.glassBorder)
+                    .frame(height: 5)
+
+                // Shimmer sweep
+                RoundedRectangle(cornerRadius: DS.Radius.pill, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                DS.Colors.accent.opacity(0.1),
+                                DS.Colors.accent.opacity(0.6),
+                                DS.Colors.accent.opacity(0.1),
+                            ],
+                            startPoint: UnitPoint(x: shimmerOffset, y: 0.5),
+                            endPoint: UnitPoint(x: shimmerOffset + 0.5, y: 0.5)
+                        )
+                    )
+                    .frame(height: 5)
+            }
+        }
+        .frame(height: 5)
+        .onAppear {
+            withAnimation(
+                .linear(duration: 1.5)
+                .repeatForever(autoreverses: false)
+            ) {
+                shimmerOffset = 1.5
+            }
+        }
+    }
+}
+
 // MARK: - DownloadItemCard
 
 /// A Liquid Glass card representing one download item.
@@ -37,6 +81,13 @@ struct DownloadItemCard: View {
     let onResume: () -> Void
     let onCancel: () -> Void
     let onRetry:  () -> Void
+
+    @State private var showErrorDetail = false
+
+    /// True when the download is running but no bytes have arrived yet.
+    private var isInitializing: Bool {
+        item.status == .running && item.downloadedSize == 0 && item.totalSize == 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
@@ -56,9 +107,21 @@ struct DownloadItemCard: View {
                 actionButtons
             }
 
-            // Progress bar (not shown for terminal/paused states without ongoing bytes)
-            if item.status == .running || item.status == .pending {
+            // Progress bar / Shimmer / Waiting
+            if isInitializing {
+                ShimmerProgressBar()
+                Text("Initializing…")
+                    .font(DS.Typography.caption)
+                    .foregroundStyle(DS.Colors.labelSec)
+                    .transition(.opacity)
+            } else if item.status == .pending {
+                Text("Waiting…")
+                    .font(DS.Typography.caption)
+                    .foregroundStyle(DS.Colors.labelSec)
+                    .transition(.opacity)
+            } else if item.status == .running {
                 DownloadProgressBar(progress: item.progressPercent)
+                    .transition(.opacity)
             }
 
             // Stats row
@@ -103,9 +166,19 @@ struct DownloadItemCard: View {
 
             // Progress percentage (running only)
             if item.status == .running, item.totalSize > 0 {
-                Text(String(format: "%.1f%% · %@ remaining", item.progressPercent, formatBytes(item.remainingSize)))
-                    .font(DS.Typography.mono)
-                    .foregroundStyle(DS.Colors.labelSec)
+                HStack {
+                    Text(String(format: "%.1f%%", item.progressPercent))
+                        .font(DS.Typography.mono)
+                        .foregroundStyle(DS.Colors.labelSec)
+                    if let etaString = formatETA(item.estimatedSecondsRemaining) {
+                        Text("·")
+                            .font(DS.Typography.mono)
+                            .foregroundStyle(DS.Colors.labelSec)
+                        Text(etaString)
+                            .font(DS.Typography.mono)
+                            .foregroundStyle(DS.Colors.accent)
+                    }
+                }
             }
         }
         .padding(DS.Spacing.md)
@@ -115,6 +188,20 @@ struct DownloadItemCard: View {
         )
         .opacity(item.status == .paused ? 0.75 : 1.0)
         .animation(.downlySpring, value: item.status.rawValue)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if item.status == .error {
+                showErrorDetail = true
+            }
+        }
+        .sheet(isPresented: $showErrorDetail) {
+            ErrorDetailSheet(
+                fileName: item.fileName,
+                url: item.url,
+                errorMessage: item.errorMessage ?? "Unknown error",
+                errorDate: item.updatedAt
+            )
+        }
     }
 
     // MARK: - Sub-views
@@ -173,6 +260,25 @@ struct DownloadItemCard: View {
     private func formatBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
+
+    /// Returns a human-readable ETA string, or `nil` if `seconds` is unavailable.
+    private func formatETA(_ seconds: Int?) -> String? {
+        guard let seconds, seconds > 0 else { return nil }
+        if seconds < 60 {
+            return "~\(seconds) sec remaining"
+        } else if seconds < 3600 {
+            let mins = seconds / 60
+            return "~\(mins) min remaining"
+        } else {
+            let hrs = seconds / 3600
+            let mins = (seconds % 3600) / 60
+            if mins > 0 {
+                return "~\(hrs) hr \(mins) min remaining"
+            } else {
+                return "~\(hrs) hr remaining"
+            }
+        }
+    }
 }
 
 // MARK: - StatusDot
@@ -180,10 +286,14 @@ struct DownloadItemCard: View {
 private struct StatusDot: View {
     let status: DownloadStatus
 
+    @State private var isPulsing = false
+
     var body: some View {
         Circle()
             .fill(DS.Colors.statusColor(for: status))
             .frame(width: 8, height: 8)
+            .scaleEffect(status == .pending && isPulsing ? 1.4 : 1.0)
+            .opacity(status == .pending && isPulsing ? 0.5 : 1.0)
             .overlay {
                 if status == .running {
                     Circle()
@@ -193,6 +303,26 @@ private struct StatusDot: View {
                             .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
                             value: status.rawValue
                         )
+                }
+            }
+            .onAppear {
+                if status == .pending {
+                    withAnimation(
+                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true)
+                    ) {
+                        isPulsing = true
+                    }
+                }
+            }
+            .onChange(of: status) { _, newStatus in
+                if newStatus == .pending {
+                    withAnimation(
+                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true)
+                    ) {
+                        isPulsing = true
+                    }
+                } else {
+                    isPulsing = false
                 }
             }
     }

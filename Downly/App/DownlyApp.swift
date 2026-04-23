@@ -91,6 +91,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Touch the singleton early so the background URLSession delegate is
+        // reconnected before the system delivers pending events from a cold
+        // launch triggered by nsurlsessiond.
+        _ = DownloadEngine.shared
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {

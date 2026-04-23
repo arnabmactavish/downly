@@ -5,8 +5,6 @@ import SwiftUI
 /// Modal settings screen (task 9.6).
 struct SettingsView: View {
 
-    @Environment(\.dismiss) private var dismiss
-
     @AppStorage("chunkSizeIndex")          private var chunkSizeIndex         = 1  // 0=1MB 1=4MB 2=8MB
     @AppStorage("maxConcurrentDownloads")  private var maxConcurrentDownloads  = 3
     @AppStorage("allowArbitraryLoads")     private var allowArbitraryLoads    = false
@@ -123,12 +121,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(DS.Typography.callout)
-                }
-            }
         }
     }
 

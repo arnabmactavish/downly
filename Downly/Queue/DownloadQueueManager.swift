@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SwiftData
+import ActivityKit
 
 /// Manages the download queue: enqueues, pauses, resumes, cancels,
 /// and restores downloads across app launches.
@@ -108,7 +109,11 @@ final class DownloadQueueManager: ObservableObject {
         operations[id]?.cancel()
         operations.removeValue(forKey: id)
 
-        Task { await engine.cancelDownload(id: id) }
+        Task {
+            await engine.cancelDownload(id: id)
+            // Dismiss any associated Live Activity on cancellation
+            await LiveActivityManager.shared.endActivity(id: id, policy: .immediate)
+        }
 
         // Clean up temp files
         if let item = fetchItem(id: id) {
@@ -237,7 +242,17 @@ final class DownloadQueueManager: ObservableObject {
                 }
             }
 
-            let tempDir = FileManager.default.temporaryDirectory
+            let fm = FileManager.default
+            let tempDir: URL
+            if let appGroupURL = fm.containerURL(
+                forSecurityApplicationGroupIdentifier: AppModelContainer.appGroupID
+            ) {
+                let groupTmp = appGroupURL.appendingPathComponent("tmp", isDirectory: true)
+                try? fm.createDirectory(at: groupTmp, withIntermediateDirectories: true)
+                tempDir = groupTmp
+            } else {
+                tempDir = fm.temporaryDirectory
+            }
 
             // 3. Chunked or single-stream download
             if capability.supportsRanges,
@@ -461,8 +476,9 @@ final class DownloadQueueManager: ObservableObject {
     @MainActor
     private func markCompleted(id: UUID) {
         guard let item = fetchItem(id: id) else { return }
-        item.status    = .completed
-        item.updatedAt = Date()
+        item.status                    = .completed
+        item.estimatedSecondsRemaining = nil
+        item.updatedAt                 = Date()
         try? modelContext.save()
         operations.removeValue(forKey: id)
 
@@ -496,9 +512,10 @@ final class DownloadQueueManager: ObservableObject {
     @MainActor
     private func markError(id: UUID, message: String) {
         guard let item = fetchItem(id: id) else { return }
-        item.status       = .error
-        item.errorMessage = message
-        item.updatedAt    = Date()
+        item.status                    = .error
+        item.errorMessage              = message
+        item.estimatedSecondsRemaining = nil
+        item.updatedAt                 = Date()
         try? modelContext.save()
         operations.removeValue(forKey: id)
 

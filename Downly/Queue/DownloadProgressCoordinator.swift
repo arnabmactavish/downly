@@ -43,19 +43,20 @@ final class DownloadProgressCoordinator {
         // back on the main thread. Capturing `modelContext` here is safe because
         // we're on @MainActor and the closure will always be invoked on @MainActor.
         let context = modelContext
-        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void = {
-            [weak self] id, downloaded, total, status, errorMsg, speed in
+        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void = {
+            [weak self] id, downloaded, total, status, errorMsg, speed, eta in
             guard self != nil else { return }
             let descriptor = FetchDescriptor<DownloadItem>(
                 predicate: #Predicate { $0.id == id }
             )
             guard let item = try? context.fetch(descriptor).first else { return }
-            item.downloadedSize      = downloaded
-            item.totalSize           = total
-            item.status              = status
-            item.errorMessage        = errorMsg
-            item.speedBytesPerSecond = speed
-            item.updatedAt           = Date()
+            item.downloadedSize              = downloaded
+            item.totalSize                   = total
+            item.status                      = status
+            item.errorMessage                = errorMsg
+            item.speedBytesPerSecond         = speed
+            item.estimatedSecondsRemaining   = eta
+            item.updatedAt                   = Date()
             try? context.save()
         }
 
@@ -66,6 +67,7 @@ final class DownloadProgressCoordinator {
             totalSize: progress.totalBytesExpected,
             status: .running,
             speedBytesPerSecond: progress.speed,
+            estimatedSecondsRemaining: progress.estimatedSecondsRemaining,
             save: saveClosure
         )
 
@@ -85,17 +87,18 @@ final class DownloadProgressCoordinator {
 
         let context = modelContext
         let total = getItem(id: downloadID)?.totalSize ?? 0
-        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void = {
-            id, downloaded, totalSize, status, errorMsg, speed in
+        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void = {
+            id, downloaded, totalSize, status, errorMsg, speed, eta in
             let descriptor = FetchDescriptor<DownloadItem>(
                 predicate: #Predicate { $0.id == id }
             )
             guard let item = try? context.fetch(descriptor).first else { return }
-            item.downloadedSize = downloaded
-            item.totalSize      = totalSize
-            item.status         = status
-            item.errorMessage   = errorMsg
-            item.updatedAt      = Date()
+            item.downloadedSize            = downloaded
+            item.totalSize                 = totalSize
+            item.status                    = status
+            item.errorMessage              = errorMsg
+            item.estimatedSecondsRemaining = nil
+            item.updatedAt                 = Date()
             try? context.save()
         }
         await throttle.forceFlush(
@@ -115,17 +118,18 @@ final class DownloadProgressCoordinator {
         let item = getItem(id: downloadID)
         let downloaded = item?.downloadedSize ?? 0
         let total      = item?.totalSize ?? 0
-        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void = {
-            id, dl, tot, status, errorMsg, speed in
+        let saveClosure: @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void = {
+            id, dl, tot, status, errorMsg, speed, eta in
             let descriptor = FetchDescriptor<DownloadItem>(
                 predicate: #Predicate { $0.id == id }
             )
             guard let itm = try? context.fetch(descriptor).first else { return }
-            itm.downloadedSize = dl
-            itm.totalSize      = tot
-            itm.status         = status
-            itm.errorMessage   = errorMsg
-            itm.updatedAt      = Date()
+            itm.downloadedSize            = dl
+            itm.totalSize                 = tot
+            itm.status                    = status
+            itm.errorMessage              = errorMsg
+            itm.estimatedSecondsRemaining = nil
+            itm.updatedAt                 = Date()
             try? context.save()
         }
         await throttle.forceFlush(

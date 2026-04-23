@@ -26,6 +26,7 @@ actor PersistenceThrottle {
         let status: DownloadStatus
         let errorMessage: String?
         let speedBytesPerSecond: Int64
+        let estimatedSecondsRemaining: Int?
     }
 
     private var pendingUpdates: [UUID: PendingUpdate] = [:]
@@ -57,7 +58,8 @@ actor PersistenceThrottle {
         status: DownloadStatus,
         errorMessage: String? = nil,
         speedBytesPerSecond: Int64 = 0,
-        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void
+        estimatedSecondsRemaining: Int? = nil,
+        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void
     ) async {
         let now = Date()
         let lastWrite  = lastWriteTimes[id]
@@ -78,6 +80,7 @@ actor PersistenceThrottle {
                 status: status,
                 errorMessage: errorMessage,
                 speedBytesPerSecond: speedBytesPerSecond,
+                estimatedSecondsRemaining: estimatedSecondsRemaining,
                 save: save,
                 now: now,
                 currentPct: currentPct
@@ -88,7 +91,8 @@ actor PersistenceThrottle {
                 totalSize: totalSize,
                 status: status,
                 errorMessage: errorMessage,
-                speedBytesPerSecond: speedBytesPerSecond
+                speedBytesPerSecond: speedBytesPerSecond,
+                estimatedSecondsRemaining: estimatedSecondsRemaining
             )
         }
     }
@@ -101,7 +105,8 @@ actor PersistenceThrottle {
         status: DownloadStatus,
         errorMessage: String? = nil,
         speedBytesPerSecond: Int64 = 0,
-        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void
+        estimatedSecondsRemaining: Int? = nil,
+        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void
     ) async {
         let currentPct = totalSize > 0
             ? Double(downloadedSize) / Double(totalSize) * 100
@@ -113,6 +118,7 @@ actor PersistenceThrottle {
             status: status,
             errorMessage: errorMessage,
             speedBytesPerSecond: speedBytesPerSecond,
+            estimatedSecondsRemaining: estimatedSecondsRemaining,
             save: save,
             now: Date(),
             currentPct: currentPct
@@ -128,14 +134,15 @@ actor PersistenceThrottle {
         status: DownloadStatus,
         errorMessage: String?,
         speedBytesPerSecond: Int64,
-        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64) -> Void,
+        estimatedSecondsRemaining: Int?,
+        save: @escaping @MainActor (UUID, Int64, Int64, DownloadStatus, String?, Int64, Int?) -> Void,
         now: Date,
         currentPct: Double
     ) async {
         // Dispatch the actual SwiftData write back to @MainActor so the
         // ModelContext is always accessed on the queue where it was created.
         await MainActor.run {
-            save(id, downloadedSize, totalSize, status, errorMessage, speedBytesPerSecond)
+            save(id, downloadedSize, totalSize, status, errorMessage, speedBytesPerSecond, estimatedSecondsRemaining)
         }
 
         lastWriteTimes[id]  = now
