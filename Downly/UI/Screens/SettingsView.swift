@@ -16,6 +16,12 @@ struct SettingsView: View {
         ("8 MB",  8 * 1024 * 1024),
     ]
 
+    private var appVersionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        return "Version \(version) (\(build))"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -110,7 +116,7 @@ struct SettingsView: View {
                                 Text("Downly")
                                     .font(DS.Typography.callout)
                                 Spacer()
-                                Text("Version 1.0")
+                                Text(appVersionString)
                                     .font(DS.Typography.caption)
                                     .foregroundStyle(DS.Colors.labelSec)
                             }
