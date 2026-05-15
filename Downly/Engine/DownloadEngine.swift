@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import UIKit
 
 /// A progress snapshot delivered to observers from the download engine.
 struct DownloadProgress: Sendable {
@@ -52,9 +53,15 @@ actor DownloadEngine: NSObject {
 
     typealias ProgressStream = AsyncStream<DownloadProgress>
 
+    private enum SessionKind {
+        case foreground
+        case background
+    }
+
     private struct ActiveTask {
         let downloadID: UUID
         let task: URLSessionDownloadTask
+        var sessionKind: SessionKind = .foreground
         var retryCount: Int = 0
         var lastProgressTime: Date = .distantPast
         var lastBytesWritten: Int64 = 0
@@ -65,7 +72,12 @@ actor DownloadEngine: NSObject {
     // MARK: - State
 
     // URLSession must be set after `super.init()` because we pass `self` as delegate.
+    /// Background URLSession — survives app suspension via nsurlsessiond.
     private var session: URLSession!
+    /// Foreground URLSession — in-process, full speed while app is active.
+    private var foregroundSession: URLSession!
+    /// Tracks whether the app is currently in the foreground.
+    private var isAppActive: Bool = true
     private var activeTasks: [UUID: ActiveTask] = [:]
     private var progressContinuations: [UUID: AsyncStream<DownloadProgress>.Continuation] = [:]
 
@@ -101,56 +113,70 @@ actor DownloadEngine: NSObject {
             delegate: self,
             delegateQueue: nil
         )
+
+        // Foreground session — uses the default in-process networking stack
+        // for maximum throughput while the app is active.
+        let fgConfig = URLSessionConfiguration.default
+        fgConfig.httpMaximumConnectionsPerHost = 6
+        foregroundSession = URLSession(
+            configuration: fgConfig,
+            delegate: self,
+            delegateQueue: nil
+        )
+
+        // Observe app lifecycle to migrate downloads between sessions.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.handleWillResignActive() }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.handleDidBecomeActive() }
+        }
     }
 
     // MARK: - Public API
 
     /// Begin a download for `url`, identified by `downloadID`.
     /// Returns an `AsyncStream` of progress updates throttled to 0.5 s.
+    /// Uses the foreground session when the app is active for maximum speed;
+    /// falls back to the background session when suspended.
     @discardableResult
     func startDownload(
         id downloadID: UUID,
         url: URL,
         resumeData: Data? = nil
     ) -> ProgressStream {
+        let kind: SessionKind = isAppActive ? .foreground : .background
+        let targetSession = isAppActive ? foregroundSession! : session!
+
         let task: URLSessionDownloadTask
         if let data = resumeData {
-            task = session.downloadTask(withResumeData: data)
+            task = targetSession.downloadTask(withResumeData: data)
         } else {
-            task = session.downloadTask(with: url)
+            task = targetSession.downloadTask(with: url)
         }
         task.taskDescription = downloadID.uuidString
         task.resume()
 
         let (stream, continuation) = ProgressStream.makeStream()
         progressContinuations[downloadID] = continuation
-        activeTasks[downloadID] = ActiveTask(downloadID: downloadID, task: task)
+        activeTasks[downloadID] = ActiveTask(
+            downloadID: downloadID,
+            task: task,
+            sessionKind: kind
+        )
 
         DownlyLogger.logStart(id: downloadID, url: url)
-        return stream
-    }
-
-    /// Begin a chunked partial download using an HTTP Range header.
-    @discardableResult
-    func startChunkDownload(
-        id downloadID: UUID,
-        chunkIndex: Int,
-        url: URL,
-        rangeStart: Int64,
-        rangeEnd: Int64
-    ) -> ProgressStream {
-        var request = URLRequest(url: url)
-        request.setValue("bytes=\(rangeStart)-\(rangeEnd)", forHTTPHeaderField: "Range")
-
-        let task = session.downloadTask(with: request)
-        // Encode both download ID and chunk index into the description
-        task.taskDescription = "\(downloadID.uuidString)|\(chunkIndex)"
-        task.resume()
-
-        let (stream, continuation) = ProgressStream.makeStream()
-        progressContinuations[downloadID] = continuation
-        activeTasks[downloadID] = ActiveTask(downloadID: downloadID, task: task)
-
         return stream
     }
 
@@ -409,14 +435,18 @@ private extension DownloadEngine {
             return parts.count > 1 ? Int(parts[1]) : nil
         }
 
+        // Use the same session the original task was on.
+        let targetSession: URLSession = entry.sessionKind == .foreground ? foregroundSession! : session!
+
         if let chunkIndex {
-            // Re-issue chunk request
-            let newTask = session.downloadTask(with: entry.task.originalRequest!)
+            // Re-issue chunk request on the same session.
+            let newTask = targetSession.downloadTask(with: entry.task.originalRequest!)
             newTask.taskDescription = "\(entry.downloadID.uuidString)|\(chunkIndex)"
             newTask.resume()
             activeTasks[entry.downloadID] = ActiveTask(
                 downloadID: entry.downloadID,
                 task: newTask,
+                sessionKind: entry.sessionKind,
                 retryCount: entry.retryCount
             )
         } else {
@@ -428,6 +458,74 @@ private extension DownloadEngine {
         // backgroundCompletionHandler is a plain non-async closure — call directly.
         backgroundCompletionHandler?()
         backgroundCompletionHandler = nil
+    }
+
+    // MARK: - App Lifecycle
+
+    func handleWillResignActive() {
+        isAppActive = false
+        migrateToBackground()
+    }
+
+    func handleDidBecomeActive() {
+        isAppActive = true
+        // Background tasks continue as-is — no migration back to foreground.
+    }
+
+    /// Cancels all active foreground-session tasks and restarts them on the
+    /// background session, preserving download progress via resume data where
+    /// the server supports it.
+    func migrateToBackground() {
+        let foregroundEntries = activeTasks.values.filter { $0.sessionKind == .foreground }
+        guard !foregroundEntries.isEmpty else { return }
+
+        for entry in foregroundEntries {
+            let downloadID = entry.downloadID
+            let originalURL = entry.task.originalRequest?.url
+
+            entry.task.cancel(byProducingResumeData: { [weak self] resumeData in
+                guard let self else { return }
+                Task {
+                    await self.restartOnBackground(
+                        downloadID: downloadID,
+                        resumeData: resumeData,
+                        fallbackURL: originalURL
+                    )
+                }
+            })
+        }
+    }
+
+    /// Restarts a migrated download on the background session.
+    private func restartOnBackground(
+        downloadID: UUID,
+        resumeData: Data?,
+        fallbackURL: URL?
+    ) {
+        // Remove stale foreground entry (task is already cancelled).
+        activeTasks.removeValue(forKey: downloadID)
+
+        let task: URLSessionDownloadTask
+        if let data = resumeData {
+            task = session.downloadTask(withResumeData: data)
+        } else if let url = fallbackURL {
+            task = session.downloadTask(with: url)
+        } else {
+            // No resume data and no URL — nothing we can do.
+            progressContinuations[downloadID]?.finish()
+            progressContinuations.removeValue(forKey: downloadID)
+            return
+        }
+
+        task.taskDescription = downloadID.uuidString
+        task.resume()
+
+        activeTasks[downloadID] = ActiveTask(
+            downloadID: downloadID,
+            task: task,
+            sessionKind: .background
+        )
+        DownlyLogger.logStart(id: downloadID, url: task.originalRequest?.url ?? task.currentRequest?.url ?? URL(string: "unknown")!)
     }
 }
 
