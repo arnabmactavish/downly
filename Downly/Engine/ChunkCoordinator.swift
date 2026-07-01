@@ -13,8 +13,11 @@ actor ChunkCoordinator {
     private let maxConcurrentChunks = 6
     /// Dedicated ephemeral session for chunk requests, kept separate from
     /// the background URLSession in DownloadEngine to avoid connection conflicts.
-    private let session: URLSession = URLSession(configuration: .ephemeral)
+    private var session: URLSession = URLSession(configuration: .ephemeral)
     private let maxChunkRetries     = 3
+    /// Set to true by `cancelAll()` so in-flight `downloadChunk` loops
+    /// exit immediately without sleeping between retries.
+    private var isCancelled: Bool   = false
 
     // MARK: - Types
 
@@ -38,6 +41,14 @@ actor ChunkCoordinator {
     }
 
     // MARK: - Public API
+
+    /// Cancel all in-flight chunk requests immediately.
+    /// Invalidates the underlying URLSession so all pending `data(for:)` tasks
+    /// fail with `NSURLErrorCancelled`, unblocking `downloadAll`.
+    func cancelAll() {
+        isCancelled = true
+        session.invalidateAndCancel()
+    }
 
     /// Download all `chunks` from `url` using at most 6 concurrent tasks.
     ///
@@ -136,6 +147,8 @@ actor ChunkCoordinator {
         )
 
         for attempt in 0...maxChunkRetries {
+            // Exit immediately if the coordinator was cancelled (app backgrounded).
+            if isCancelled { return nil }
             do {
                 let (data, response) = try await session.data(for: request)
 
@@ -154,6 +167,10 @@ actor ChunkCoordinator {
                 return ChunkResult(index: range.index, tempFilePath: tempFile)
 
             } catch {
+                // Exit immediately if cancelled — no sleep, return nil so
+                // the batch loop accrues a permanent failure quickly and
+                // downloadAll returns .fallbackToSingleStream without delay.
+                if isCancelled { return nil }
                 if attempt < maxChunkRetries {
                     try? await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
                 } else {

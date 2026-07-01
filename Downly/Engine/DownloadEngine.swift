@@ -81,6 +81,17 @@ actor DownloadEngine: NSObject {
     private var activeTasks: [UUID: ActiveTask] = [:]
     private var progressContinuations: [UUID: AsyncStream<DownloadProgress>.Continuation] = [:]
 
+    /// Download IDs currently being intentionally cancelled for session migration.
+    /// `handleError` silently ignores `NSURLErrorCancelled` for these IDs.
+    private var migratingDownloadIDs: Set<UUID> = []
+
+    /// Number of foreground tasks still awaiting their background replacement.
+    /// When it hits zero the background task protection window is ended.
+    private var pendingMigrationCount: Int = 0
+
+    /// Background-task token granted during session migration.
+    private var migrationBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+
     /// Stored by AppDelegate so we can call it in `urlSessionDidFinishEvents`.
     /// It is a plain sync closure (system requirement).
     private(set) var backgroundCompletionHandler: (() -> Void)?
@@ -308,6 +319,9 @@ private extension DownloadEngine {
         totalBytesExpected: Int64
     ) {
         let now = Date()
+        // Clear migration flag on first real progress — the new task is alive
+        // and any cancel errors from the old task have already been suppressed.
+        migratingDownloadIDs.remove(downloadID)
         guard var entry = activeTasks[downloadID] else { return }
 
         // Throttle: deliver at most once per 0.5 s
@@ -398,6 +412,26 @@ private extension DownloadEngine {
     }
 
     func handleError(downloadID: UUID, error: Error) {
+        // Suppress NSURLErrorCancelled that stems from session migration.
+        //
+        // Two cases require suppression:
+        //   1. ID is in migratingDownloadIDs  — we explicitly cancelled the task.
+        //   2. App is not active + error is cancelled — iOS killed the foreground
+        //      URLSession task as the app entered the background.  There is an
+        //      unavoidable async-hop race between willResignActive setting
+        //      migratingDownloadIDs and URLSession firing didCompleteWithError,
+        //      so we use isAppActive as a reliable secondary guard.
+        //      A real user-initiated cancel always happens while the app is active.
+        let nsError = error as NSError
+        let isCancelledError = nsError.domain == NSURLErrorDomain
+            && nsError.code == NSURLErrorCancelled
+        if isCancelledError && (migratingDownloadIDs.contains(downloadID) || !isAppActive) {
+            // Migration-induced cancellation — ignore; the download will
+            // be restarted on the background session by restartOnBackground.
+            migratingDownloadIDs.remove(downloadID)
+            return
+        }
+
         guard var entry = activeTasks[downloadID] else { return }
 
         if isTransientError(error) && entry.retryCount < 3 {
@@ -464,35 +498,149 @@ private extension DownloadEngine {
 
     func handleWillResignActive() {
         isAppActive = false
+
+        // Guard: only start background task if there's something to migrate.
+        let foregroundEntries = activeTasks.values.filter { $0.sessionKind == .foreground }
+        guard !foregroundEntries.isEmpty else { return }
+
+        // Grab background execution time so the async resumeData callbacks
+        // and background-task creation can complete before iOS suspends us.
+        // This gives us ~30 s, far more than migration needs.
+        migrationBackgroundTaskID = UIApplication.shared.beginBackgroundTask(
+            withName: "com.downly.session-migration"
+        ) { [weak self] in
+            // Expiry handler — system is about to kill us. End the token
+            // to avoid termination; any un-migrated tasks will be recovered
+            // at next launch via SwiftData interrupted status.
+            guard let self else { return }
+            Task {
+                await self.endMigrationBackgroundTask()
+            }
+        }
+
         migrateToBackground()
     }
 
     func handleDidBecomeActive() {
         isAppActive = true
-        // Background tasks continue as-is — no migration back to foreground.
+        migrateToForeground()
+    }
+
+    /// Cancels all active background-session tasks and restarts them on the
+    /// foreground session so downloads regain full speed (multiple connections,
+    /// no OS throttling) while the app is visible.
+    func migrateToForeground() {
+        let backgroundEntries = activeTasks.values.filter { $0.sessionKind == .background }
+        guard !backgroundEntries.isEmpty else { return }
+
+        for entry in backgroundEntries {
+            let downloadID = entry.downloadID
+            let originalURL = entry.task.originalRequest?.url ?? entry.task.currentRequest?.url
+
+            // Mark as migrating so handleError suppresses the NSURLErrorCancelled
+            // produced by the intentional cancel below.
+            migratingDownloadIDs.insert(downloadID)
+
+            Task {
+                let resumeData: Data? = await withCheckedContinuation { cont in
+                    entry.task.cancel(byProducingResumeData: { data in
+                        cont.resume(returning: data)
+                    })
+                }
+                await self.restartOnForeground(
+                    downloadID: downloadID,
+                    resumeData: resumeData,
+                    fallbackURL: originalURL
+                )
+            }
+        }
+    }
+
+    /// Restarts a migrated download on the foreground session.
+    ///
+    /// Background-session resume data is tagged with the session identifier
+    /// and cannot be used with a foreground URLSession — it causes the task
+    /// to fail immediately.  We always restart from the original URL instead.
+    /// Progress resets to 0 for this download, but foreground speed is restored.
+    ///
+    /// `migratingDownloadIDs` is intentionally NOT cleared here; it is cleared
+    /// by `handleProgress` on the first real progress update from the new task,
+    /// ensuring `handleError` continues to suppress any late cancel callbacks
+    /// from the background task while the new foreground task is starting up.
+    private func restartOnForeground(
+        downloadID: UUID,
+        resumeData: Data?,
+        fallbackURL: URL?
+    ) {
+        // Remove the stale background entry.
+        activeTasks.removeValue(forKey: downloadID)
+
+        // Always use the original URL — resume data from background sessions
+        // is incompatible with foreground sessions on iOS.
+        guard let url = fallbackURL else {
+            progressContinuations[downloadID]?.finish()
+            progressContinuations.removeValue(forKey: downloadID)
+            migratingDownloadIDs.remove(downloadID)
+            return
+        }
+
+        let task = foregroundSession.downloadTask(with: url)
+        task.taskDescription = downloadID.uuidString
+        task.resume()
+
+        activeTasks[downloadID] = ActiveTask(
+            downloadID: downloadID,
+            task: task,
+            sessionKind: .foreground
+        )
+        // NOTE: migratingDownloadIDs NOT cleared here — see handleProgress.
+        DownlyLogger.logStart(id: downloadID, url: url)
+    }
+
+    /// Ends the background-task protection window if one is active.
+    private func endMigrationBackgroundTask() {
+        guard migrationBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(migrationBackgroundTaskID)
+        migrationBackgroundTaskID = .invalid
+        pendingMigrationCount = 0
     }
 
     /// Cancels all active foreground-session tasks and restarts them on the
     /// background session, preserving download progress via resume data where
     /// the server supports it.
+    ///
+    /// Robust to the case where iOS has already killed the foreground task:
+    /// `cancel(byProducingResumeData:)` callback may never fire on a dead task,
+    /// so we wrap it in `withCheckedContinuation` ensuring restart always runs.
     func migrateToBackground() {
         let foregroundEntries = activeTasks.values.filter { $0.sessionKind == .foreground }
         guard !foregroundEntries.isEmpty else { return }
+
+        pendingMigrationCount = foregroundEntries.count
 
         for entry in foregroundEntries {
             let downloadID = entry.downloadID
             let originalURL = entry.task.originalRequest?.url
 
-            entry.task.cancel(byProducingResumeData: { [weak self] resumeData in
-                guard let self else { return }
-                Task {
-                    await self.restartOnBackground(
-                        downloadID: downloadID,
-                        resumeData: resumeData,
-                        fallbackURL: originalURL
-                    )
+            // Mark as migrating BEFORE cancel so handleError can suppress the
+            // NSURLErrorCancelled that fires from this intentional cancellation.
+            migratingDownloadIDs.insert(downloadID)
+
+            // Wrap cancel(byProducingResumeData:) in a continuation so the
+            // restart Task is guaranteed to run even if the task is already dead
+            // and URLSession never fires the callback.
+            Task {
+                let resumeData: Data? = await withCheckedContinuation { cont in
+                    entry.task.cancel(byProducingResumeData: { data in
+                        cont.resume(returning: data)
+                    })
                 }
-            })
+                await self.restartOnBackground(
+                    downloadID: downloadID,
+                    resumeData: resumeData,
+                    fallbackURL: originalURL
+                )
+            }
         }
     }
 
@@ -514,6 +662,7 @@ private extension DownloadEngine {
             // No resume data and no URL — nothing we can do.
             progressContinuations[downloadID]?.finish()
             progressContinuations.removeValue(forKey: downloadID)
+            finishMigration(for: downloadID)
             return
         }
 
@@ -525,7 +674,21 @@ private extension DownloadEngine {
             task: task,
             sessionKind: .background
         )
-        DownlyLogger.logStart(id: downloadID, url: task.originalRequest?.url ?? task.currentRequest?.url ?? URL(string: "unknown")!)
+        DownlyLogger.logStart(
+            id: downloadID,
+            url: task.originalRequest?.url ?? task.currentRequest?.url ?? URL(string: "unknown")!
+        )
+        finishMigration(for: downloadID)
+    }
+
+    /// Clears migration tracking for `downloadID` and ends the background-task
+    /// protection window once all migrations have completed.
+    private func finishMigration(for downloadID: UUID) {
+        migratingDownloadIDs.remove(downloadID)
+        pendingMigrationCount -= 1
+        if pendingMigrationCount <= 0 {
+            endMigrationBackgroundTask()
+        }
     }
 }
 

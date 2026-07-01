@@ -81,8 +81,10 @@ struct DownloadItemCard: View {
     let onResume: () -> Void
     let onCancel: () -> Void
     let onRetry:  () -> Void
+    var isSelected: Bool = false
 
-    @State private var showErrorDetail = false
+    @State private var showDetail     = false
+    @State private var showUpdateURL  = false
 
     /// True when the download is running but no bytes have arrived yet.
     private var isInitializing: Bool {
@@ -186,23 +188,82 @@ struct DownloadItemCard: View {
             cornerRadius: DS.Radius.md,
             tint: DS.Colors.statusColor(for: item.status)
         )
-        .opacity(item.status == .paused ? 0.75 : 1.0)
-        .animation(.downlySpring, value: item.status.rawValue)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if item.status == .error {
-                showErrorDetail = true
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                    .stroke(DS.Colors.accent, lineWidth: 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                            .fill(DS.Colors.selectionHighlight)
+                    )
+                    .allowsHitTesting(false)
             }
         }
-        .sheet(isPresented: $showErrorDetail) {
-            ErrorDetailSheet(
-                fileName: item.fileName,
-                url: item.url,
-                errorMessage: item.errorMessage ?? "Unknown error",
-                errorDate: item.updatedAt
+        .opacity(item.status == .paused ? 0.75 : 1.0)
+        .animation(.downlySpring, value: item.status.rawValue)
+        .animation(.downlySpring, value: isSelected)
+        .contentShape(Rectangle())
+        // Long press → context menu with card preview
+        .contextMenu {
+            DownloadContextMenu(
+                item: item,
+                onUpdateURL: { showUpdateURL = true },
+                onShowDetail: { showDetail = true }
+            )
+        } preview: {
+            cardPreview
+        }
+        // Detail sheet
+        .sheet(isPresented: $showDetail) {
+            DownloadDetailSheet(
+                item: item,
+                onPause:      onPause,
+                onResume:     onResume,
+                onCancel:     onCancel,
+                onRetry:      onRetry,
+                onUpdateURL:  { showUpdateURL = true }
             )
         }
+        // URL update sheet
+        .sheet(isPresented: $showUpdateURL) {
+            UpdateURLSheet(item: item, onDismiss: {})
+        }
     }
+
+    // MARK: - Context menu card preview
+
+    private var cardPreview: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            HStack {
+                StatusDot(status: item.status)
+                Text(item.fileName)
+                    .font(DS.Typography.headline)
+                    .foregroundStyle(DS.Colors.label)
+                    .lineLimit(1)
+                Spacer()
+            }
+            if item.status == .running {
+                DownloadProgressBar(progress: item.progressPercent)
+            }
+            HStack {
+                Text(String(format: "%.1f%%", item.progressPercent))
+                    .font(DS.Typography.mono)
+                    .foregroundStyle(DS.Colors.labelSec)
+                Spacer()
+                Text(formatBytes(item.totalSize))
+                    .font(DS.Typography.caption)
+                    .foregroundStyle(DS.Colors.labelSec)
+            }
+        }
+        .padding(DS.Spacing.md)
+        .frame(width: 280)
+        .liquidGlass(
+            cornerRadius: DS.Radius.md,
+            tint: DS.Colors.statusColor(for: item.status)
+        )
+        .padding(DS.Spacing.md)
+    }
+
 
     // MARK: - Sub-views
 

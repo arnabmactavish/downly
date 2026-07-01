@@ -75,3 +75,5 @@ GoogleService-Info.plist
 # Misc
 
 *.orig
+opencode.json
+skills-lock.json

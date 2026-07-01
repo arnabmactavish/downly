@@ -57,11 +57,11 @@ The Add Download modal SHALL allow the user to enter a URL, optionally edit the 
 - **THEN** the modal SHALL dismiss without creating a download
 
 ### Requirement: Download item card
-Each download in the list SHALL be displayed as a card showing: file name, total size, downloaded size, remaining size, progress percentage, current speed, and a status indicator.
+Each download in the list SHALL be displayed as a card showing: file name, total size, downloaded size, remaining size, progress percentage, current speed, estimated time remaining, and a status indicator. The card SHALL support swipe, tap, long press, and multi-select gestures.
 
 #### Scenario: Downloading state card
-- **WHEN** a download is in `.running` state
-- **THEN** the card MUST show an animated progress bar, live-updating speed (e.g., "4.2 MB/s"), and estimated time remaining
+- **WHEN** a download is in `.running` state with `downloadedSize > 0`
+- **THEN** the card MUST show an animated progress bar, live-updating speed (e.g., "4.2 MB/s"), and estimated time remaining (e.g., "~2 min remaining")
 
 #### Scenario: Paused state card
 - **WHEN** a download is in `.paused` state
@@ -74,6 +74,23 @@ Each download in the list SHALL be displayed as a card showing: file name, total
 #### Scenario: Error state card
 - **WHEN** a download is in `.error` state
 - **THEN** the card MUST display a red error indicator, a shortened error message, and a "Retry" button
+
+#### Scenario: Tap opens detail sheet
+- **WHEN** user taps any download card
+- **THEN** a detail bottom sheet SHALL present with comprehensive download information (replaces error-only tap behavior)
+
+#### Scenario: Long press shows context menu
+- **WHEN** user long presses any download card
+- **THEN** a context menu SHALL appear with state-appropriate actions
+
+#### Scenario: Left swipe reveals delete
+- **WHEN** user swipes left on any download card
+- **THEN** a destructive delete action SHALL be revealed
+
+#### Scenario: Selection mode appearance
+- **WHEN** the list is in selection mode (via two-finger gesture or Edit button)
+- **THEN** each card SHALL show a leading selection checkbox and support tap-to-toggle selection
+
 
 ### Requirement: Liquid Glass design system
 All primary UI surfaces (navigation bar, FAB, cards, modal background) SHALL implement the Liquid Glass aesthetic: blur effect background, semi-transparent fills, rounded corners (≥ 20 pt radius for containers), and smooth spring animations.
@@ -152,32 +169,3 @@ The `<HStack>` overlay implementation representing `FloatingBottomNavBar` SHALL 
 - **AND** it SHALL leverage native navigation structures configured cleanly with proper `.contentMargins` designed to support true material bleed-through properties underneath
 
 
-<!-- DELTA SPEC APPENDED DUE TO SYNC FAILURE -->
-
-## MODIFIED Requirements
-
-### Requirement: Download item card
-Each download in the list SHALL be displayed as a card showing: file name, total size, downloaded size, remaining size, progress percentage, current speed, estimated time remaining, and a status indicator.
-
-#### Scenario: Downloading state card
-- **WHEN** a download is in `.running` state with `downloadedSize > 0`
-- **THEN** the card MUST show an animated progress bar, live-updating speed (e.g., "4.2 MB/s"), and estimated time remaining (e.g., "~2 min remaining")
-
-#### Scenario: Paused state card
-- **WHEN** a download is in `.paused` state
-- **THEN** the card MUST display a dimmed appearance with a "Paused" label and a resume button
-
-#### Scenario: Completed state card
-- **WHEN** a download is in `.completed` state
-- **THEN** the card MUST display a green checkmark success indicator and the final file size, with no progress bar
-
-#### Scenario: Error state card
-- **WHEN** a download is in `.error` state
-- **THEN** the card MUST display a red error indicator, a shortened error message, and a "Retry" button
-- **AND** the card MUST be tappable to present an error detail sheet
-
-## REMOVED Requirements
-
-### Requirement: Settings "Done" button in toolbar
-**Reason**: Settings is now displayed as a tab in `MainTabView`, not as a modal sheet. The "Done" dismiss button is unnecessary and confusing.
-**Migration**: Remove the `ToolbarItem(placement: .topBarTrailing)` containing `Button("Done") { dismiss() }` from `SettingsView`. The `@Environment(\.dismiss)` property can also be removed since it is no longer used.

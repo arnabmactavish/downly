@@ -71,7 +71,13 @@ final class DownloadProgressCoordinator {
             save: saveClosure
         )
 
-        // 2. Live Activity update
+        // 2. Speed history — recorded every progress tick (throttled to 0.5 s by engine)
+        let historyStore = SpeedHistoryStore.shared
+        await MainActor.run {
+            historyStore.history(for: downloadID).record(bytesPerSecond: progress.speed)
+        }
+
+        // 3. Live Activity update
         let state = DownloadAttributes.ContentState(
             progressPercent: progress.percent,
             speedBytesPerSecond: progress.speed,

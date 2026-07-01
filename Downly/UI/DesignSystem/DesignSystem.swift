@@ -35,6 +35,12 @@ enum DS {
         /// Page / list background
         static let background  = Color(uiColor: .systemBackground)
 
+        /// Selection highlight — tinted accent at low opacity for selected cards
+        static let selectionHighlight = Color(hue: 0.60, saturation: 0.85, brightness: 1.0).opacity(0.15)
+
+        /// Subtle tint for context menu / detail sheet backgrounds
+        static let sheetBackground = Color(uiColor: .secondarySystemGroupedBackground)
+
         // Status-driven colours
         static func statusColor(for status: DownloadStatus) -> Color {
             switch status {

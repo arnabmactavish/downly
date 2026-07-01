@@ -19,6 +19,9 @@ struct DownloadListView: View {
     @State private var showAddSheet   = false
     @State private var isEditMode     = false
     @State private var selectedIDs:   Set<UUID> = []
+    @State private var pendingDeleteID: UUID?   = nil
+    @State private var showDeleteConfirm = false
+    @State private var cardFrames: [UUID: CGRect] = [:]
 
     // MARK: - Query
 
@@ -63,27 +66,49 @@ struct DownloadListView: View {
                                         onPause:  { Task { await queueManager.pauseDownload(id: item.id) } },
                                         onResume: { queueManager.resumeDownload(id: item.id) },
                                         onCancel: { queueManager.cancelDownload(id: item.id) },
-                                        onRetry:  { queueManager.resumeDownload(id: item.id) }
+                                        onRetry:  { queueManager.resumeDownload(id: item.id) },
+                                        isSelected: selectedIDs.contains(item.id)
                                     )
+                                    .reportCardFrame(id: item.id)
                                 }
                                 .id(item.id)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        pendingDeleteID = item.id
+                                        showDeleteConfirm = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash.fill")
+                                    }
+                                    .tint(DS.Colors.error)
+                                }
                             }
                         }
                     }
                     .padding(.horizontal, DS.Spacing.md)
                     .padding(.vertical, DS.Spacing.md)
                     // Extra bottom padding when edit mode is active to prevent
-                    // the FAB from overlapping the last card.
+                    // the SelectionToolbar from overlapping the last card.
                     .padding(.bottom, isEditMode ? 80 : 0)
                 }
                 .scrollIndicators(.hidden)
-
-                // Floating delete FAB
-                if isEditMode && !selectedIDs.isEmpty {
-                    deleteFloatingButton
-                        .transition(.scale.combined(with: .opacity))
-                        .padding(DS.Spacing.lg)
+                .coordinateSpace(name: "downloadList")
+                .onPreferenceChange(CardFramePreferenceKey.self) { frames in
+                    cardFrames = frames
                 }
+                // Two-finger gesture overlay — sits on top of scroll view.
+                // allowsHitTesting(false) lets SwiftUI still receive single-finger
+                // taps and scroll events; the UIView's UIPanGestureRecognizer fires
+                // independently of SwiftUI's hit-test chain.
+                .overlay {
+                    TwoFingerPanOverlay(
+                        isSelectionMode: $isEditMode,
+                        selectedIDs: $selectedIDs,
+                        cardFrames: cardFrames
+                    )
+                    .allowsHitTesting(false)
+                }
+
+
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -130,10 +155,51 @@ struct DownloadListView: View {
                 }
             }
             .animation(.downlySpring, value: isEditMode)
+            // Selection toolbar anchored at bottom in edit mode
+            .safeAreaInset(edge: .bottom) {
+                if isEditMode {
+                    SelectionToolbar(
+                        selectedIDs: $selectedIDs,
+                        isSelectionMode: $isEditMode,
+                        allIDs: filteredItems.map(\.id),
+                        onDeleteAll: {
+                            withSpringAnimation {
+                                for id in selectedIDs { deleteItem(id: id) }
+                            }
+                        },
+                        onPauseAll: {
+                            let ids = selectedIDs
+                            Task {
+                                for id in ids { await queueManager.pauseDownload(id: id) }
+                            }
+                        },
+                        onResumeAll: {
+                            for id in selectedIDs { queueManager.resumeDownload(id: id) }
+                        }
+                    )
+                    .padding(.horizontal, DS.Spacing.md)
+                    .padding(.bottom, DS.Spacing.sm)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
         .sheet(isPresented: $showAddSheet) {
             AddDownloadSheet { url, fileName in
                 try? queueManager.addDownload(url: url, fileName: fileName)
+            }
+        }
+        .alert("Delete Download?", isPresented: $showDeleteConfirm, presenting: pendingDeleteID) { id in
+            Button("Delete", role: .destructive) {
+                deleteItem(id: id)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { id in
+            if let item = filteredItems.first(where: { $0.id == id }) {
+                if item.status == .completed {
+                    Text("\"\(item.fileName)\" will be removed from the list. The downloaded file will be kept.")
+                } else {
+                    Text("\"\(item.fileName)\" will be cancelled and removed.")
+                }
             }
         }
     }
@@ -166,7 +232,25 @@ struct DownloadListView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Selection Checkbox (edit mode)
+    // MARK: - Swipe-to-Delete
+
+    /// Deletes a download. For completed items, only the record is removed
+    /// (the downloaded file is preserved). For all other states, `cancelDownload`
+    /// is called which also cleans up temp files.
+    private func deleteItem(id: UUID) {
+        guard let item = allItems.first(where: { $0.id == id }) else { return }
+        if item.status == .completed {
+            // Only remove the record — file stays in Documents
+            modelContext.delete(item)
+            try? modelContext.save()
+            SpeedHistoryStore.shared.remove(for: id)
+        } else {
+            queueManager.cancelDownload(id: id)
+            SpeedHistoryStore.shared.remove(for: id)
+        }
+        selectedIDs.remove(id)
+    }
+
 
     private func selectionCheckbox(for item: DownloadItem) -> some View {
         Button {

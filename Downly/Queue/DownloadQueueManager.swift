@@ -1,7 +1,9 @@
 import Foundation
+import UniformTypeIdentifiers
 import Combine
 import SwiftData
 import ActivityKit
+import UIKit
 
 /// Manages the download queue: enqueues, pauses, resumes, cancels,
 /// and restores downloads across app launches.
@@ -32,6 +34,11 @@ final class DownloadQueueManager: ObservableObject {
     /// Map from download ID → its live Operation (if active).
     private var operations: [UUID: DownloadOperation] = [:]
 
+    /// Active ChunkCoordinator instances, keyed by download ID.
+    /// Populated just before `downloadAll` and removed on completion.
+    /// Used to cancel in-flight chunk tasks when the app backgrounds.
+    private var activeChunkCoordinators: [UUID: ChunkCoordinator] = [:]
+
     // MARK: - Init
 
     init(
@@ -46,6 +53,25 @@ final class DownloadQueueManager: ObservableObject {
         self.assemblyEngine = assemblyEngine
         self.diskChecker    = diskChecker
         self.modelContext   = modelContext
+
+        // When the app moves to background, cancel all ephemeral chunk sessions
+        // so the existing .fallbackToSingleStream path restarts them on the
+        // background URLSession (isAppActive is already false at this point,
+        // so engine.startDownload will pick the background session).
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let coordinators = self.activeChunkCoordinators.values
+                for coordinator in coordinators {
+                    await coordinator.cancelAll()
+                }
+            }
+        }
     }
 
     // MARK: - Public API
@@ -121,6 +147,81 @@ final class DownloadQueueManager: ObservableObject {
             modelContext.delete(item)
             try? modelContext.save()
         }
+    }
+
+    /// Update the URL for a paused or errored download, performing HEAD validation
+    /// to confirm range-request support before swapping the URL.
+    ///
+    /// - Parameters:
+    ///   - id: The download item ID.
+    ///   - newURL: The replacement URL to validate and store.
+    ///   - resetProgress: When `true`, resets `downloadedSize` to 0 and deletes all chunk records,
+    ///     enabling a fresh start even if the server content-length is smaller than current progress.
+    func updateURL(id: UUID, newURL: URL, resetProgress: Bool = false) async throws {
+        guard let item = fetchItem(id: id) else {
+            throw DownloadQueueError.itemNotFound
+        }
+        guard item.status == .paused || item.status == .error || item.status == .interrupted else {
+            throw DownloadQueueError.downloadMustBePaused
+        }
+
+        // HEAD validation
+        var headRequest = URLRequest(url: newURL)
+        headRequest.httpMethod = "HEAD"
+        headRequest.timeoutInterval = 15
+
+        let (_, response) = try await URLSession.shared.data(for: headRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw DownloadQueueError.urlNotCompatible(reason: "Invalid server response")
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw DownloadQueueError.urlNotCompatible(
+                reason: "Server returned \(httpResponse.statusCode)"
+            )
+        }
+
+        let acceptsRanges = httpResponse.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased() == "bytes"
+        let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length")
+            .flatMap { Int64($0) } ?? 0
+
+        if !resetProgress {
+            guard acceptsRanges else {
+                throw DownloadQueueError.urlNotCompatible(
+                    reason: "Server does not support range requests (Accept-Ranges: bytes missing)"
+                )
+            }
+            if contentLength > 0 && contentLength < item.downloadedSize {
+                throw DownloadQueueError.contentLengthMismatch(
+                    serverLength: contentLength,
+                    downloadedBytes: item.downloadedSize
+                )
+            }
+        }
+
+        // Swap URL, clear resume data, reset chunks if requested
+        item.url = newURL.absoluteString
+        item.resumeData = nil
+        item.errorMessage = nil
+
+        if resetProgress {
+            item.downloadedSize = 0
+            item.totalSize = contentLength > 0 ? contentLength : item.totalSize
+            for chunk in item.chunks {
+                modelContext.delete(chunk)
+            }
+            item.status = .pending
+        } else {
+            // Reset incomplete chunks so they restart from their range offsets
+            for chunk in item.chunks where chunk.status != .completed {
+                chunk.status = .pending
+                chunk.retryCount = 0
+                chunk.tempFilePath = nil
+            }
+            item.status = .paused
+        }
+
+        item.updatedAt = Date()
+        try modelContext.save()
     }
 
     /// Re-queue any `.pending` or `.interrupted` downloads found in SwiftData.
@@ -280,6 +381,8 @@ final class DownloadQueueManager: ObservableObject {
                 }
 
                 let coordinator = ChunkCoordinator()
+                // Register coordinator so willResignActive can cancel it.
+                await MainActor.run { self.activeChunkCoordinators[id] = coordinator }
                 let result = await coordinator.downloadAll(
                     downloadID: id,
                     url: url,
@@ -351,6 +454,9 @@ final class DownloadQueueManager: ObservableObject {
                         observer: fallbackObserver
                     )
                 }
+
+                // Deregister coordinator — no longer needed after downloadAll returns.
+                await MainActor.run { self.activeChunkCoordinators.removeValue(forKey: id) }
 
             } else {
                 // Single-stream download.
@@ -563,4 +669,28 @@ final class DownloadQueueManager: ObservableObject {
 extension Notification.Name {
     static let downloadDidComplete = Notification.Name("com.downly.downloadDidComplete")
     static let downloadDidFail     = Notification.Name("com.downly.downloadDidFail")
+}
+
+// MARK: - DownloadQueueError
+
+enum DownloadQueueError: LocalizedError {
+    case itemNotFound
+    case downloadMustBePaused
+    case urlNotCompatible(reason: String)
+    case contentLengthMismatch(serverLength: Int64, downloadedBytes: Int64)
+
+    var errorDescription: String? {
+        switch self {
+        case .itemNotFound:
+            return "Download item not found."
+        case .downloadMustBePaused:
+            return "The download must be paused or in an error state before updating its URL."
+        case .urlNotCompatible(let reason):
+            return "New URL is not compatible: \(reason)"
+        case .contentLengthMismatch(let serverLength, let downloaded):
+            let serverStr = ByteCountFormatter.string(fromByteCount: serverLength, countStyle: .file)
+            let dlStr = ByteCountFormatter.string(fromByteCount: downloaded, countStyle: .file)
+            return "Server file (\(serverStr)) is smaller than already downloaded data (\(dlStr)). Choose \"Start Fresh\" to restart from 0."
+        }
+    }
 }
