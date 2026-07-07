@@ -21,6 +21,7 @@ struct DownloadListView: View {
     @State private var selectedIDs:   Set<UUID> = []
     @State private var pendingDeleteID: UUID?   = nil
     @State private var showDeleteConfirm = false
+    @State private var deleteFileAlso    = false
     @State private var cardFrames: [UUID: CGRect] = [:]
 
     // MARK: - Query
@@ -67,7 +68,18 @@ struct DownloadListView: View {
                                         onResume: { queueManager.resumeDownload(id: item.id) },
                                         onCancel: { queueManager.cancelDownload(id: item.id) },
                                         onRetry:  { queueManager.resumeDownload(id: item.id) },
-                                        isSelected: selectedIDs.contains(item.id)
+                                        isSelected: selectedIDs.contains(item.id),
+                                        // In edit mode tap toggles selection; outside edit mode
+                                        // the card opens the detail sheet on its own.
+                                        onTap: isEditMode ? {
+                                            withSpringAnimation {
+                                                if selectedIDs.contains(item.id) {
+                                                    selectedIDs.remove(item.id)
+                                                } else {
+                                                    selectedIDs.insert(item.id)
+                                                }
+                                            }
+                                        } : nil
                                     )
                                     .reportCardFrame(id: item.id)
                                 }
@@ -163,8 +175,11 @@ struct DownloadListView: View {
                         isSelectionMode: $isEditMode,
                         allIDs: filteredItems.map(\.id),
                         onDeleteAll: {
+                            let ids = selectedIDs
                             withSpringAnimation {
-                                for id in selectedIDs { deleteItem(id: id) }
+                                for id in ids { deleteItem(id: id, skipAutoClose: true) }
+                                selectedIDs.removeAll()
+                                isEditMode = false
                             }
                         },
                         onPauseAll: {
@@ -189,14 +204,23 @@ struct DownloadListView: View {
             }
         }
         .alert("Delete Download?", isPresented: $showDeleteConfirm, presenting: pendingDeleteID) { id in
-            Button("Delete", role: .destructive) {
-                deleteItem(id: id)
+            if let item = allItems.first(where: { $0.id == id }), item.status == .completed {
+                Button("Remove Entry Only", role: .destructive) {
+                    deleteItem(id: id, deleteFile: false)
+                }
+                Button("Delete Entry & File", role: .destructive) {
+                    deleteItem(id: id, deleteFile: true)
+                }
+            } else {
+                Button("Delete", role: .destructive) {
+                    deleteItem(id: id, deleteFile: false)
+                }
             }
             Button("Cancel", role: .cancel) { }
         } message: { id in
-            if let item = filteredItems.first(where: { $0.id == id }) {
+            if let item = allItems.first(where: { $0.id == id }) {
                 if item.status == .completed {
-                    Text("\"\(item.fileName)\" will be removed from the list. The downloaded file will be kept.")
+                    Text("\"\(item.fileName)\" — choose how to remove it.")
                 } else {
                     Text("\"\(item.fileName)\" will be cancelled and removed.")
                 }
@@ -234,13 +258,21 @@ struct DownloadListView: View {
 
     // MARK: - Swipe-to-Delete
 
-    /// Deletes a download. For completed items, only the record is removed
-    /// (the downloaded file is preserved). For all other states, `cancelDownload`
-    /// is called which also cleans up temp files.
-    private func deleteItem(id: UUID) {
+    /// Deletes a download.
+    /// - Parameters:
+    ///   - deleteFile: When `true` and the item is completed, also removes the file from disk.
+    ///   - skipAutoClose: Pass `true` during batch deletions to suppress per-item auto-close;
+    ///     the caller is responsible for closing edit mode after the loop.
+    private func deleteItem(id: UUID, deleteFile: Bool = false, skipAutoClose: Bool = false) {
         guard let item = allItems.first(where: { $0.id == id }) else { return }
         if item.status == .completed {
-            // Only remove the record — file stays in Documents
+            if deleteFile {
+                // Remove both the record and the file on disk
+                let fm = FileManager.default
+                let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let fileURL = docs.appendingPathComponent(item.fileName)
+                try? fm.removeItem(at: fileURL)
+            }
             modelContext.delete(item)
             try? modelContext.save()
             SpeedHistoryStore.shared.remove(for: id)
@@ -249,6 +281,10 @@ struct DownloadListView: View {
             SpeedHistoryStore.shared.remove(for: id)
         }
         selectedIDs.remove(id)
+        // Auto-exit edit mode when the last selected item has been removed
+        if !skipAutoClose && selectedIDs.isEmpty {
+            withSpringAnimation { isEditMode = false }
+        }
     }
 
 

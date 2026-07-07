@@ -82,6 +82,9 @@ struct DownloadItemCard: View {
     let onCancel: () -> Void
     let onRetry:  () -> Void
     var isSelected: Bool = false
+    /// Optional tap override. When `nil`, tapping the card opens the detail sheet.
+    /// In selection mode, the parent passes a handler that toggles selection.
+    var onTap: (() -> Void)? = nil
 
     @State private var showDetail     = false
     @State private var showUpdateURL  = false
@@ -203,6 +206,13 @@ struct DownloadItemCard: View {
         .animation(.downlySpring, value: item.status.rawValue)
         .animation(.downlySpring, value: isSelected)
         .contentShape(Rectangle())
+        .onTapGesture {
+            if let onTap {
+                onTap()
+            } else {
+                showDetail = true
+            }
+        }
         // Long press → context menu with card preview
         .contextMenu {
             DownloadContextMenu(
