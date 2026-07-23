@@ -583,6 +583,7 @@ final class DownloadQueueManager: ObservableObject {
     private func markCompleted(id: UUID) {
         guard let item = fetchItem(id: id) else { return }
         item.status                    = .completed
+        item.downloadedSize            = item.totalSize
         item.estimatedSecondsRemaining = nil
         item.updatedAt                 = Date()
         try? modelContext.save()
